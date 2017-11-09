@@ -25,7 +25,7 @@ app.use((err, req, res, next) => {
   next()
 })
 
-const PORT = process.env.PORT || 5000
+const PORT = process.env.PORT || 5001
 
 app.listen(PORT, () => (
   // eslint-disable-next-line no-console
