@@ -1,118 +1,115 @@
-const axios = require('axios')
+const {
+  fetchUserData,
+  fetchHouseData,
+  fetchSenateData,
+  fetchRepData,
+  fetchTimesData,
+} = require('./helpers/third-party-api-calls')
 
-const GEOCODE_URL = 'https://api.geocod.io/v1/geocode'
-const PROPUBLICA_URL = 'https://api.propublica.org/congress/v1/members'
-const NYT_URL = 'https://api.nytimes.com/svc/search/v2/articlesearch.json'
+// URL prefixes and endpoints
+const API_PREFIX = '/api/v1'
+const USER_ENDPOINT = `${API_PREFIX}/user`
+const REP_ENDPOINT = `${API_PREFIX}/representatives`
 
-// fetches state, formatted address, and congressional district
-// from Geocodio API
-const fetchUserData = _address => (
-  axios.get(GEOCODE_URL, {
-    params: {
-      q: _address,
-      fields: 'cd115',
-      api_key: process.env.GEOCODIO_KEY,
-    },
-  })
-    .then((response) => {
-      const {
-        address_components: { state },
-        formatted_address: address,
-        fields: { congressional_district: { district_number: district } },
-      } = response.data.results[0]
-
-      return { state, address, district }
-    })
-)
-
-// fetches senate representatives info based on user's state
-const fetchSenateData = _state => (
-  axios.get(`${PROPUBLICA_URL}/senate/${_state}/current.json`, {
-    headers: {
-      'x-api-key': process.env.PROPUBLICA_KEY,
-    },
-  }).then(response => response.data.results)
-)
-
-// fetches house representative info based on user's state and district
-const fetchHouseData = (_state, _district) => (
-  axios.get(`${PROPUBLICA_URL}/house/${_state}/${_district}/current.json`, {
-    headers: {
-      'x-api-key': process.env.PROPUBLICA_KEY,
-    },
-  }).then(response => response.data.results)
-)
-
-// fetches more detailed representative data
-const fetchRepData = id => (
-  axios.get(`${PROPUBLICA_URL}/${id}.json`, {
-    headers: {
-      'x-api-key': process.env.PROPUBLICA_KEY,
-    },
-  }).then((response) => {
-    const { status, error, errors } = response.data
-
-    return status !== 'OK'
-      ? errors || error
-      : response.data.results[0]
-  })
-)
-
-// fetches recent New York Times articles for representative
-const fetchTimesData = name => (
-  axios.get(NYT_URL, {
-    params: { 'api-key': process.env.NYT_KEY, q: name },
-  }).then(response => response.data)
-    .catch(err => ({ error: err.message }))
-)
-
-// API routes
 module.exports = (app) => {
-  app.get('/api/v1/user', async (req, res) => {
+  app.get(USER_ENDPOINT, async (req, res, next) => {
     try {
       const { state, address, district } = await fetchUserData(req.query.address)
 
       res.send({ state, address, district })
     } catch (err) {
-      res.status(err.response.status).send(err.message)
+      next(err)
     }
   })
 
-  app.get('/api/v1/representatives/house', async (req, res) => {
-    const { state, district } = req.query
-
+  app.get(`${REP_ENDPOINT}/house`, async (req, res, next) => {
     try {
+      const { state, district } = req.query
+
+      if (!state || !district) {
+        const err = new Error()
+        err.status = 400
+        err.error = 'A valid state and district is required'
+        next(err)
+      }
+
       const response = await fetchHouseData(state, district)
-      res.send(response)
+
+      if (response.status !== 'OK') {
+        const err = new Error()
+        err.status = 404
+        err.error = response.errors[0].error || 'Not Found'
+        next(err)
+      } else {
+        res.send(response.results[0])
+      }
     } catch (err) {
-      res.status(err.response.status).send(err.message)
+      next(err)
     }
   })
 
-  app.get('/api/v1/representatives/senate', async (req, res) => {
+  app.get(`${REP_ENDPOINT}/senate`, async (req, res, next) => {
     try {
+      if (!req.query.state) {
+        const err = new Error()
+        err.status = 400
+        err.error = 'A valid state is required'
+        next(err)
+      }
+
       const response = await fetchSenateData(req.query.state)
-      res.send(response)
+
+      if (response.status !== 'OK') {
+        const err = new Error()
+        err.status = 404
+        err.error = response.errors[0].error || 'Not Found'
+        next(err)
+      } else {
+        res.send(response.results)
+      }
     } catch (err) {
-      res.status(err.response.status).send(err.message)
+      next(err)
     }
   })
 
-  app.get('/api/v1/representatives/:id', async (req, res) => {
+  app.get(`${REP_ENDPOINT}/:id`, async (req, res, next) => {
     try {
+      if (!req.params.id) {
+        const err = new Error()
+        err.status = 400
+        err.error = 'A valid representative ID is required'
+        next(err)
+      }
+
       const response = await fetchRepData(req.params.id)
-      res.send(response)
+
+      if (response.status !== 'OK') {
+        const err = new Error()
+        err.status = 404
+        err.error = response.errors[0].error || 'Not Found'
+        next(err)
+      } else {
+        res.send(response.results[0])
+      }
     } catch (err) {
-      res.status(err.response.status).send(err.message)
+      next(err)
     }
   })
 
-  app.get('/api/v1/representatives/nyt/articles', async (req, res) => {
+  app.get(`${REP_ENDPOINT}/nyt/articles`, async (req, res, next) => {
     try {
+      if (!req.query.name) {
+        const err = new Error()
+        err.status = 400
+        err.error = 'A valid, searchable name is required'
+        next(err)
+      }
+
       const response = await fetchTimesData(req.query.name)
+
       res.send(response)
     } catch (err) {
-      res.status(err.response.status).send(err.message)
+      next(err)
     }
   })
 }

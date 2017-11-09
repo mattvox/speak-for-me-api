@@ -18,12 +18,15 @@ chai.use(chaiHttp)
 describe('GET api/v1/', function () {
   beforeEach(function (done) {
     address = '416 Sloan Ave 08107'
-    badAddress = '416'
     state = 'NJ'
     district = 1
     repId = 'B001288'
-    badRepId = 'HHHHHH'
     repName = 'cory booker'
+
+    badAddress = '416'
+    badState = 'ZZ'
+    badDistrict = 12345
+    badRepId = 'HHHHHH'
     done()
   })
 
@@ -44,6 +47,33 @@ describe('GET api/v1/', function () {
       })
   })
 
+  it('should GET house rep info', function (done) {
+    chai.request(app)
+      .get('/api/v1/representatives/house')
+      .query({ state, district })
+      .end(function (err, res) {
+        res.should.have.status(200)
+        res.should.be.json
+        res.body.should.be.a('object')
+        res.body.should.have.property('id')
+        res.body.should.have.property('name')
+        res.body.should.have.property('party')
+        done()
+      })
+  })
+
+  it('should GET senate reps info', function (done) {
+    chai.request(app)
+      .get('/api/v1/representatives/senate')
+      .query({ state })
+      .end(function (err, res) {
+        res.should.have.status(200)
+        res.should.be.json
+        res.body.should.be.a('array')
+        done()
+      })
+  })
+
   it('should GET detailed rep info', function (done) {
     chai.request(app)
       .get(`/api/v1/representatives/${repId}`)
@@ -58,32 +88,10 @@ describe('GET api/v1/', function () {
       })
   })
 
-  it('should GET house rep info', function (done) {
-    chai.request(app)
-      .get('/api/v1/representatives/house')
-      .query({ state, district })
-      .end(function (err, res) {
-        res.should.have.status(200)
-        res.should.be.json
-        done()
-      })
-  })
-
-  it('should GET senate reps info', function (done) {
-    chai.request(app)
-      .get('/api/v1/representatives/senate')
-      .query({ state })
-      .end(function (err, res) {
-        res.should.have.status(200)
-        res.should.be.json
-        done()
-      })
-  })
-
   it('should GET articles from the Times', function (done) {
     chai.request(app)
       .get('/api/v1/representatives/nyt/articles')
-      .query({ state })
+      .query({ name: repName })
       .end(function (err, res) {
         res.should.have.status(200)
         res.should.be.json
@@ -118,22 +126,104 @@ describe('GET api/v1/', function () {
       })
   })
 
-  it('should FAIL to GET detailed rep info with bad ID', function (done) {
+  it('should FAIL to GET house rep info with bad state', function (done) {
     chai.request(app)
-      .get(`/api/v1/representatives/${badRepId}`)
+      .get('/api/v1/representatives/house')
+      .query({ state: badState, district })
       .end(function (err, res) {
-        res.should.have.status(200)
-        res.should.be.json
-        res.body.should.be.a('array')
+        err.response.should.have.status(404)
+        res.should.have.status(404)
+        res.body.should.be.a('object')
+        res.body.should.have.property('error')
         done()
       })
   })
 
+  it('should FAIL to GET house rep info with no state', function (done) {
+    chai.request(app)
+      .get('/api/v1/representatives/house')
+      .query({ district })
+      .end(function (err, res) {
+        err.response.should.have.status(400)
+        res.should.have.status(400)
+        res.body.should.be.a('object')
+        res.body.should.have.property('error')
+        done()
+      })
+  })
 
-  // house: fail on bad/no state/district
-  // senate: fail on bad/no state
-  // times: fail on empty response
-  // all: fail on actual err responses
-  // refactor to better handle ProPublica's response,
-  // of always 200 even when error occurs
+  it('should FAIL to GET house rep info with bad district', function (done) {
+    chai.request(app)
+      .get('/api/v1/representatives/house')
+      .query({ state, district: badDistrict })
+      .end(function (err, res) {
+        err.response.should.have.status(404)
+        res.should.have.status(404)
+        res.body.should.be.a('object')
+        res.body.should.have.property('error')
+        done()
+      })
+  })
+
+  it('should FAIL to GET house rep info with no district', function (done) {
+    chai.request(app)
+      .get('/api/v1/representatives/house')
+      .query({ state })
+      .end(function (err, res) {
+        err.response.should.have.status(400)
+        res.should.have.status(400)
+        res.body.should.be.a('object')
+        res.body.should.have.property('error')
+        done()
+      })
+  })
+
+  it('should FAIL to GET senate reps info with bad state', function (done) {
+    chai.request(app)
+      .get('/api/v1/representatives/senate')
+      .query({ state: badState })
+      .end(function (err, res) {
+        err.response.should.have.status(404)
+        res.should.have.status(404)
+        res.body.should.be.a('object')
+        res.body.should.have.property('error')
+        done()
+      })
+  })
+
+  it('should FAIL to GET senate reps info with no state', function (done) {
+    chai.request(app)
+      .get('/api/v1/representatives/senate')
+      .end(function (err, res) {
+        err.response.should.have.status(400)
+        res.should.have.status(400)
+        res.body.should.be.a('object')
+        res.body.should.have.property('error')
+        done()
+      })
+  })
+
+  it('should FAIL to GET detailed rep info with bad ID', function (done) {
+    chai.request(app)
+      .get(`/api/v1/representatives/${badRepId}`)
+      .end(function (err, res) {
+        err.response.should.have.status(404)
+        res.should.have.status(404)
+        res.body.should.be.a('object')
+        res.body.should.have.property('error')
+        done()
+      })
+  })
+
+  it('should FAIL to GET news articles with no name to search', function (done) {
+    chai.request(app)
+      .get('/api/v1/representatives/nyt/articles')
+      .end(function (err, res) {
+        err.response.should.have.status(400)
+        res.should.have.status(400)
+        res.body.should.be.a('object')
+        res.body.should.have.property('error')
+        done()
+      })
+  })
 })
